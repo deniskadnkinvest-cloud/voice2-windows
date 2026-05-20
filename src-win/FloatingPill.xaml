@@ -1,0 +1,21 @@
+<Window x:Class="Voice2.FloatingPill"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False"
+        Width="220" Height="36"
+        WindowStartupLocation="Manual"
+        MouseLeftButtonDown="OnDrag">
+    <Grid>
+        <Border x:Name="Pill" CornerRadius="18"
+                Background="#CC1C1C1E"
+                Padding="16 0">
+            <TextBlock x:Name="Label"
+                       Text="● Запись…"
+                       Foreground="White"
+                       FontSize="13" FontWeight="Medium"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Center"/>
+        </Border>
+    </Grid>
+</Window>

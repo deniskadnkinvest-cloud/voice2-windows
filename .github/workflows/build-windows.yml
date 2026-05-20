@@ -1,0 +1,73 @@
+name: Build Voice2 Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download whisper.cpp release
+        shell: pwsh
+        run: |
+          $url = "https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.4/whisper-bin-x64.zip"
+          Invoke-WebRequest -Uri $url -OutFile whisper-bin.zip
+          Expand-Archive -Path whisper-bin.zip -DestinationPath whisper-bin -Force
+
+      - name: Download Whisper base model
+        shell: pwsh
+        run: |
+          $url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+          Invoke-WebRequest -Uri $url -OutFile ggml-base.bin
+
+      - name: Publish Voice2.exe
+        shell: pwsh
+        run: |
+          dotnet publish src-win/Voice2Win.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o dist
+
+      - name: Copy whisper.exe and model
+        shell: pwsh
+        run: |
+          Copy-Item whisper-bin\main.exe dist\whisper.exe -Force
+          Copy-Item ggml-base.bin dist\ggml-base.bin -Force
+
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\Voice2.exe, dist\whisper.exe, dist\ggml-base.bin `
+            -DestinationPath Voice2-Windows-Personal.zip -Force
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Voice2 Windows ${{ github.ref_name }}
+          body: |
+            Personal build — безлимит, без регистрации, без оплаты.
+
+            **Установка:**
+            1. Распакуй ZIP — все три файла в одну папку
+            2. Запусти `Voice2.exe`
+            3. При первом запуске разреши микрофон
+            4. Зажми **Right Ctrl** и говори
+          files: Voice2-Windows-Personal.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

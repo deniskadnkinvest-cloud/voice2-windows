@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Voice2</RootNamespace>
+    <AssemblyName>Voice2</AssemblyName>
+    <ApplicationIcon>..\resources\voice2.ico</ApplicationIcon>
+    <Version>2.1.0</Version>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WinForms" />
+  </ItemGroup>
+
+  <!-- whisper.exe + model are copied by build.ps1 step 4, not by dotnet -->
+</Project>

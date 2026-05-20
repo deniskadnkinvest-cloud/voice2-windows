@@ -1,0 +1,113 @@
+<Window x:Class="Voice2.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Voice2" Width="440" Height="580"
+        MinWidth="400" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5"
+        Closing="OnClosing">
+
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo/>
+    </Window.TaskbarItemInfo>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- header -->
+            <RowDefinition Height="Auto"/>  <!-- separator -->
+            <RowDefinition Height="Auto"/>  <!-- status -->
+            <RowDefinition Height="Auto"/>  <!-- separator -->
+            <RowDefinition Height="*"/>     <!-- record / paywall + log -->
+        </Grid.RowDefinitions>
+
+        <!-- ── Header ── -->
+        <DockPanel Grid.Row="0" Margin="0 0 0 10">
+            <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0 0 6 0"
+                     VerticalAlignment="Center">
+                <Ellipse.Fill><SolidColorBrush x:Name="DotColor" Color="Green"/></Ellipse.Fill>
+            </Ellipse>
+            <TextBlock x:Name="HeaderLabel"
+                       Text="Voice 2.0"
+                       FontSize="13" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <Button DockPanel.Dock="Right"
+                    Content="Проверить разрешения"
+                    FontSize="10" Padding="6 2"
+                    HorizontalAlignment="Right"
+                    Click="OnCheckPerms"/>
+        </DockPanel>
+        <Separator Grid.Row="1" Margin="0 0 0 10"/>
+
+        <!-- ── Mic status ── -->
+        <StackPanel Grid.Row="2" Margin="0 0 0 10">
+            <TextBlock Text="Разрешения" FontSize="12" FontWeight="SemiBold" Margin="0 0 0 8"/>
+            <WrapPanel>
+                <Border x:Name="MicBadge"   CornerRadius="4" Padding="8 4" Margin="0 0 8 0"
+                        Background="#EEE">
+                    <TextBlock x:Name="MicLabel" Text="🎙 Микрофон" FontSize="11"/>
+                </Border>
+                <Border x:Name="HotkeyBadge" CornerRadius="4" Padding="8 4"
+                        Background="#EEE">
+                    <TextBlock x:Name="HotkeyLabel" Text="⌨ Right Ctrl" FontSize="11"/>
+                </Border>
+            </WrapPanel>
+            <TextBlock x:Name="PermHint" Text="" FontSize="10" Foreground="#E66"
+                       Margin="0 6 0 0" TextWrapping="Wrap" Visibility="Collapsed"/>
+        </StackPanel>
+        <Separator Grid.Row="3" Margin="0 0 0 10"/>
+
+        <!-- ── Main area ── -->
+        <Grid Grid.Row="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- dictation section -->
+                <RowDefinition Height="*"/>     <!-- log -->
+            </Grid.RowDefinitions>
+
+            <!-- Dictation section -->
+            <StackPanel Grid.Row="0" Margin="0 0 0 12">
+                <DockPanel Margin="0 0 0 6">
+                    <TextBlock Text="Диктовка" FontSize="12" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="UsageLabel"
+                               DockPanel.Dock="Right"
+                               FontSize="10" Foreground="#888"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <TextBlock x:Name="UsageSubLabel"
+                           Text="Безлимит · Personal Build"
+                           FontSize="9" Foreground="#888" Margin="0 0 0 10"/>
+
+                <!-- Record button (visible when not at limit) -->
+                <Button x:Name="RecordBtn"
+                        Content="🎙  Зажми и говори"
+                        Height="40" FontSize="13" FontWeight="Medium"
+                        Background="#007AFF" Foreground="White"
+                        BorderThickness="0"
+                        PreviewMouseLeftButtonDown="OnRecordDown"
+                        PreviewMouseLeftButtonUp="OnRecordUp"/>
+                <TextBlock Text="Или удерживай Right Ctrl · двойной тап = hands-free"
+                           FontSize="10" Foreground="#888" Margin="0 4 0 0"/>
+
+            </StackPanel>
+
+            <!-- Log -->
+            <StackPanel Grid.Row="1">
+                <DockPanel Margin="0 0 0 4">
+                    <TextBlock Text="Лог" FontSize="12" FontWeight="SemiBold"/>
+                    <Button DockPanel.Dock="Right" Content="Очистить"
+                            FontSize="10" Padding="4 1"
+                            HorizontalAlignment="Right"
+                            Click="OnClearLog"/>
+                </DockPanel>
+                <ListBox x:Name="LogBox"
+                         Height="130" FontSize="10"
+                         FontFamily="Consolas"
+                         Background="#F0F0F0"
+                         BorderColor="#DDD"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

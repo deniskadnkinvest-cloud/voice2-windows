@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 
 namespace Voice2;
@@ -11,14 +12,7 @@ public partial class App : Application
         base.OnStartup(e);
         SetupTray();
 
-        if (!UsageTracker.Instance.IsRegistered)
-        {
-            new LoginWindow().Show();
-        }
-        else
-        {
-            new MainWindow().Show();
-        }
+        new MainWindow().Show();
     }
 
     private void SetupTray()

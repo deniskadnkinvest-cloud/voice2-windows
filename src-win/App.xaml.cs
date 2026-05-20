@@ -17,8 +17,7 @@ public partial class App : Application
 
     private void SetupTray()
     {
-        string exePath = Environment.ProcessPath
-                         ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+        string exePath = Environment.ProcessPath ?? AppContext.BaseDirectory;
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
             Icon    = System.Drawing.Icon.ExtractAssociatedIcon(exePath),

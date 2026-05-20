@@ -16,9 +16,5 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WinForms" />
-  </ItemGroup>
-
   <!-- whisper.exe + model are copied by build.ps1 step 4, not by dotnet -->
 </Project>

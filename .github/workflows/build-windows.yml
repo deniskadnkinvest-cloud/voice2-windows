@@ -19,12 +19,14 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Download whisper.cpp release
+      - name: Build whisper.cpp (main.exe)
         shell: pwsh
         run: |
-          $url = "https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.4/whisper-bin-x64.zip"
-          Invoke-WebRequest -Uri $url -OutFile whisper-bin.zip
-          Expand-Archive -Path whisper-bin.zip -DestinationPath whisper-bin -Force
+          git clone --depth 1 https://github.com/ggerganov/whisper.cpp whisper-src
+          cd whisper-src
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build build --config Release --target main -j4
+          Copy-Item build\bin\Release\main.exe ..\whisper-main.exe -Force
 
       - name: Download Whisper base model
         shell: pwsh
@@ -46,7 +48,7 @@ jobs:
       - name: Copy whisper.exe and model
         shell: pwsh
         run: |
-          Copy-Item whisper-bin\main.exe dist\whisper.exe -Force
+          Copy-Item whisper-main.exe dist\whisper.exe -Force
           Copy-Item ggml-base.bin dist\ggml-base.bin -Force
 
       - name: Create ZIP archive

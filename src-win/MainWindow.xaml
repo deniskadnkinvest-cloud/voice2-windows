@@ -104,7 +104,7 @@
                          Height="130" FontSize="10"
                          FontFamily="Consolas"
                          Background="#F0F0F0"
-                         BorderColor="#DDD"
+                         BorderBrush="#DDD"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"/>
             </StackPanel>

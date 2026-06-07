@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+Voice2.app/
+*.app/
+ACCESS.md
+*.local.md
+.swiftpm/
+Package.resolved
+*.dmg
+*.bin

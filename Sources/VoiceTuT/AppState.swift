@@ -163,7 +163,10 @@ final class AppState: ObservableObject {
         Pill.shared.show()
         log("▶ Запись началась")
 
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        // Таймер в .common-режиме + tolerance: счётчик секунд не замирает, даже когда
+        // главный run-loop уходит в tracking-режим (перетаскивание пилюли, меню и т.п.),
+        // и не штрафует CPU за идеальную точность.
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.isRecording else { return }
                 self.seconds += 1
@@ -174,6 +177,9 @@ final class AppState: ObservableObject {
                 }
             }
         }
+        t.tolerance = 0.15
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     // Minimum peak level (dB) to send to Whisper.
@@ -205,7 +211,6 @@ final class AppState: ObservableObject {
         Pill.shared.showTranscribing()
 
         let target = targetApp
-        let myBundle = self.myBundle
         let gen = self.generation  // captured — identifies this specific recording
 
         // Snapshot vocabulary + polisher settings on the main actor before detaching.
@@ -214,84 +219,149 @@ final class AppState: ObservableObject {
         let polishSettings = Polisher.loadSettings()
         let skipPolish = shiftHeldAtStart || !NetworkMonitor.shared.isOnline
 
-        // Track this job in the in-flight queue. The pill keeps a small badge
-        // showing how many recordings are still being processed in the background.
+        // Track this job in the in-flight queue. The badge shows how many
+        // recordings are still pending insertion.
         self.inFlightCount += 1
         Pill.shared.setQueueCount(self.inFlightCount)
 
         Task.detached(priority: .userInitiated) {
+            // 1. Whisper — локально, ~1–2 c на M-series.
             let raw = await Whisper.run(wav: wav, initialPrompt: whisperPrompt)
 
-            // Apply vocabulary aliases — deterministic, fast, runs even when polish is off.
-            var processed: String? = nil
+            // 2. Алиасы словаря — детерминированно и быстро. Это «быстрый» текст,
+            //    который можно вставить немедленно, не дожидаясь облака.
+            var fast: String? = nil
             if let txt = raw {
-                processed = await MainActor.run { Vocabulary.shared.applyAliases(to: txt) }
+                fast = await MainActor.run { Vocabulary.shared.applyAliases(to: txt) }
             }
-
-            // LLM polish — optional, async, may take a couple of seconds. Errors fall back to the previous text.
-            var collectedCandidates: [Polisher.Candidate] = []
-            if let txt = processed {
-                // Print an explicit decision line so the user always knows whether
-                // anything went to OpenAI and, if not, why.
-                let reason = self.polishDecisionReason(
-                    text: txt,
-                    settings: polishSettings,
-                    skip: skipPolish
-                )
-                await MainActor.run { self.log(reason.0) }
-
-                if reason.1 {
-                    await MainActor.run { Pill.shared.setCloudInFlight(true) }
-                    let result = await Polisher.polish(text: txt, terms: canonicalTerms, settings: polishSettings)
-                    processed = result.text
-                    collectedCandidates = result.candidates
-                    await MainActor.run {
-                        Pill.shared.setCloudInFlight(false)
-                        self.log("✅ Полировка завершена, кандидатов: \(result.candidates.count)")
-                    }
-                }
-            }
-
-            let final = processed
-            let candidates = collectedCandidates
-            await MainActor.run {
-                // Recording always finishes — no discard. We just decide whether
-                // to auto-inject into the active app or only stash in history.
-                let isLatest = (self.generation == gen)
-
-                // Record candidates regardless of latest-status — словарь должен
-                // обучаться даже на старых задачах.
-                if !candidates.isEmpty {
-                    for c in candidates {
-                        Vocabulary.shared.recordCandidate(canonical: c.canonical, raw: c.raw)
-                    }
-                    self.log("📚 \(candidates.count) кандидат(ов) в словарь")
-                }
-
-                self.inFlightCount = max(0, self.inFlightCount - 1)
-                Pill.shared.setQueueCount(self.inFlightCount)
-
-                if let text = final, !text.isEmpty {
-                    UsageTracker.shared.addWords(from: text)
-                    let used = UsageTracker.shared.wordsThisMonth
-                    let limit = UsageTracker.freeLimit
-                    self.appendHistory(text)
-
-                    if isLatest {
-                        self.log("✅ \"\(String(text.prefix(60)))\"  [\(used)/\(limit) слов]")
-                        Pill.shared.showResult(text)
-                        self.injectText(text, target: target, myBundle: myBundle)
-                    } else {
-                        // Новая запись уже стартовала — не вставляем чтобы не уронить
-                        // текст в чужой контекст. Транскрипт уже в истории, можно скопировать кликом.
-                        self.log("💾 Фоновая запись готова, добавлена в историю (новая запись активна — не вставляем)")
-                    }
-                } else {
+            guard let fastText = fast,
+                  !fastText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                await MainActor.run {
+                    self.inFlightCount = max(0, self.inFlightCount - 1)
+                    Pill.shared.setQueueCount(self.inFlightCount)
                     self.log("⚠️ Пустой результат (тишина или ошибка whisper)")
-                    if isLatest && self.inFlightCount == 0 { Pill.shared.hide() }
+                    if self.generation == gen && self.inFlightCount == 0 { Pill.shared.hide() }
+                }
+                return
+            }
+
+            // 3. Нужна ли полировка?
+            let reason = self.polishDecisionReason(text: fastText, settings: polishSettings, skip: skipPolish)
+            await MainActor.run { self.log(reason.0) }
+
+            guard reason.1 else {
+                // Без полировки — вставляем быстрый текст сразу.
+                await self.finishJob(text: fastText, gen: gen, target: target, candidates: [])
+                return
+            }
+
+            // 4. Полировка идёт в фоне и НЕ блокирует вставку дольше дедлайна:
+            //    • облако ответило быстро → вставляем уже отполированный текст;
+            //    • сеть тормозит → вставляем быстрый текст, а полировка дотянется
+            //      в фоне и лишь обновит запись истории.
+            //    Это убирает зависания на 20–30 c, когда api.openai.com недоступен.
+            await MainActor.run { Pill.shared.setCloudInFlight(true) }
+            let polishTask = Task.detached(priority: .userInitiated) {
+                await Polisher.polish(text: fastText, terms: canonicalTerms, settings: polishSettings)
+            }
+
+            if let result = await self.awaitWithinDeadline(polishTask, seconds: self.polishInjectDeadline) {
+                // Облако успело — вставляем отполированный текст.
+                await MainActor.run { Pill.shared.setCloudInFlight(false) }
+                await self.finishJob(text: result.text, gen: gen, target: target, candidates: result.candidates)
+            } else {
+                // Дедлайн вышел — вставляем быстрый текст немедленно.
+                let entryID = await self.finishJob(text: fastText, gen: gen, target: target, candidates: [])
+                await MainActor.run {
+                    Pill.shared.setCloudInFlight(false)
+                    self.log("⚡️ Облако тормозит — вставил быстрый текст, полировка догрузится в историю")
+                }
+                // Фоном: дождаться полировки и обновить запись истории.
+                Task.detached {
+                    let result = await polishTask.value
+                    await MainActor.run {
+                        for c in result.candidates {
+                            Vocabulary.shared.recordCandidate(canonical: c.canonical, raw: c.raw)
+                        }
+                        let polished = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let fastClean = fastText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if let entryID, !polished.isEmpty, polished != fastClean {
+                            self.updateHistoryText(id: entryID, to: polished)
+                            self.log("✨ Полировка догрузилась — история обновлена")
+                        }
+                    }
                 }
             }
         }
+    }
+
+    // Дедлайн вставки: сколько максимум ждать облачную полировку, прежде чем
+    // вставить быстрый (whisper+словарь) текст. Облако обычно отвечает <2 c;
+    // если нет — пользователя не держим.
+    private let polishInjectDeadline: Double = 2.0
+
+    /// Ждёт результат задачи не дольше `seconds`. Вернёт результат, если успел,
+    /// иначе nil. ВАЖНО: переданная задача НЕ отменяется и НЕ дожидается —
+    /// при таймауте она продолжает работу в фоне (полировка дотянется и обновит
+    /// историю). Гонщики — неструктурированные Task, поэтому функция возвращается
+    /// сразу, как только сработал первый (а не дожидается обоих, как у TaskGroup).
+    nonisolated private func awaitWithinDeadline(
+        _ task: Task<Polisher.Result, Never>, seconds: Double
+    ) async -> Polisher.Result? {
+        let gate = ResumeOnce()
+        return await withCheckedContinuation { (cont: CheckedContinuation<Polisher.Result?, Never>) in
+            // Наблюдатель: дождаться полировки.
+            Task {
+                let r = await task.value
+                if await gate.claim() { cont.resume(returning: r) }
+            }
+            // Таймер дедлайна.
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                if await gate.claim() { cont.resume(returning: nil) }
+            }
+        }
+    }
+
+    /// Завершение задачи на главном акторе: учёт очереди, история, авто-вставка
+    /// в активное приложение (только если запись всё ещё самая свежая).
+    /// Возвращает id созданной записи истории — чтобы фоновая полировка могла её обновить.
+    @MainActor @discardableResult
+    private func finishJob(
+        text: String, gen: Int, target: NSRunningApplication?, candidates: [Polisher.Candidate]
+    ) -> UUID? {
+        let isLatest = (self.generation == gen)
+
+        if !candidates.isEmpty {
+            for c in candidates { Vocabulary.shared.recordCandidate(canonical: c.canonical, raw: c.raw) }
+            self.log("📚 \(candidates.count) кандидат(ов) в словарь")
+        }
+
+        self.inFlightCount = max(0, self.inFlightCount - 1)
+        Pill.shared.setQueueCount(self.inFlightCount)
+
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else {
+            self.log("⚠️ Пустой результат")
+            if isLatest && self.inFlightCount == 0 { Pill.shared.hide() }
+            return nil
+        }
+
+        UsageTracker.shared.addWords(from: clean)
+        let used = UsageTracker.shared.wordsThisMonth
+        let limit = UsageTracker.freeLimit
+        let entryID = self.appendHistory(clean)
+
+        if isLatest {
+            self.log("✅ \"\(String(clean.prefix(60)))\"  [\(used)/\(limit) слов]")
+            Pill.shared.showResult(clean)
+            self.injectText(clean, target: target, myBundle: self.myBundle)
+        } else {
+            // Новая запись уже стартовала — не вставляем, чтобы не уронить текст
+            // в чужой контекст. Транскрипт уже в истории, можно скопировать кликом.
+            self.log("💾 Фоновая запись готова, добавлена в историю (новая запись активна — не вставляем)")
+        }
+        return entryID
     }
 
     // Выбор устройства ввода по настройке `v2.audio.device`:
@@ -455,11 +525,24 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(data, forKey: historyKey)
     }
 
-    func appendHistory(_ text: String) {
+    @discardableResult
+    func appendHistory(_ text: String) -> UUID? {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
-        history.insert(HistoryEntry(text: clean, timestamp: Date()), at: 0)
+        guard !clean.isEmpty else { return nil }
+        let entry = HistoryEntry(text: clean, timestamp: Date())
+        history.insert(entry, at: 0)
         if history.count > historyLimit { history = Array(history.prefix(historyLimit)) }
+        saveHistory()
+        return entry.id
+    }
+
+    /// Фоновая полировка догрузилась — обновляем уже добавленную запись истории.
+    /// Буфер обмена НЕ трогаем (пользователь мог скопировать что-то своё); хочет
+    /// отполированный вариант — кликнет по записи в истории.
+    func updateHistoryText(id: UUID, to newText: String) {
+        let clean = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let idx = history.firstIndex(where: { $0.id == id }) else { return }
+        history[idx] = HistoryEntry(id: id, text: clean, timestamp: history[idx].timestamp)
         saveHistory()
     }
 
@@ -525,5 +608,16 @@ final class AppState: ObservableObject {
         }
         std.set(true, forKey: migrationFlag)
         print("[Migrate] copied \(copied) keys from com.voice2.local → com.voicetut.local")
+    }
+}
+
+/// Гарантирует, что continuation сработает ровно один раз в гонке двух задач
+/// (полировка vs дедлайн). Первый, кто вызвал claim(), получает true.
+actor ResumeOnce {
+    private var done = false
+    func claim() -> Bool {
+        if done { return false }
+        done = true
+        return true
     }
 }

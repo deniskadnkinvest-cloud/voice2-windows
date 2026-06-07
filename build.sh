@@ -8,9 +8,9 @@ WHISPER_SRC="../voice-now/whisper.cpp/build_static/bin/whisper-cli"
 MODEL_SRC="../voice-now/whisper.cpp/models/ggml-small.bin"
 CERT_NAME="Voice2Dev"
 
-echo "▶ 1/4  Компиляция..."
-swift build 2>&1 | grep -E "(error:|Build complete)" | head -20
-BIN=".build/debug/VoiceTuT"
+echo "▶ 1/4  Компиляция (release — оптимизированный, плавный UI)..."
+swift build -c release 2>&1 | grep -E "(error:|Build complete)" | head -20
+BIN=".build/release/VoiceTuT"
 [ -f "$BIN" ] || { echo "❌ Бинарь не найден"; exit 1; }
 
 echo "▶ 2/4  Сборка .app..."

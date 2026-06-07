@@ -80,7 +80,10 @@ enum Polisher {
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.timeoutInterval = 20
+        // Короткий таймаут: полировка теперь фоновая и НЕ блокирует вставку текста.
+        // Если api.openai.com недоступен, нет смысла висеть долго — быстро падаем в
+        // исходный текст. (Раньше было 20 c и держало вставку → лаги на 20–30 c.)
+        req.timeoutInterval = 12
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
         req.httpBody = payload

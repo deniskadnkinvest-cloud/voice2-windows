@@ -292,7 +292,7 @@ struct PillView: View {
     // Раньше три разных процесса сливались в одно «кольцо загрузки», и оно
     // даже всплывало во время записи (если в фоне ещё крутилась прошлая диктовка).
     // Теперь у каждого процесса — свой однозначный визуал:
-    //   • .recording  — микрофон открыт, идёт захват звука → анимированные ВОЛНЫ
+    //   • .recording  — микрофон открыт, идёт захват звука → пульсирующий МИКРОФОН
     //   • .sending    — текст ушёл в OpenAI на полировку     → облако ↑ (ОТПРАВКА)
     //   • .processing — локальный whisper распознаёт          → КОЛЬЦО загрузки
     // Приоритет: запись всегда главнее (оператор должен видеть, что его слышат),
@@ -318,11 +318,11 @@ struct PillView: View {
                 .frame(width: 38, height: 38)
             switch activity {
             case .recording:
-                // ВОЛНЫ — анимированный эквалайзер, пока идёт захват звука.
-                Image(systemName: "waveform")
-                    .font(.system(size: 17, weight: .semibold))
+                // Пульсирующий микрофон (как было до анимации волной) — идёт захват звука.
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.red)
-                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, isActive: true)
+                    .symbolEffect(.pulse, isActive: true)
             case .sending:
                 // ОТПРАВКА — текст летит в облако на полировку.
                 Image(systemName: "icloud.and.arrow.up.fill")

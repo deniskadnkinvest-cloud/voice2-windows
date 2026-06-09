@@ -135,8 +135,9 @@ struct MainView: View {
                         Text(k.rawValue).tag(k)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 240)
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 200, alignment: .leading)
             }
 
             Text("Двойной тап хоткея = hands-free режим (запись до следующего тапа)")

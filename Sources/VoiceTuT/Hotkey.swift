@@ -3,28 +3,44 @@ import Cocoa
 // MARK: - Hotkey binding
 
 enum HotkeyKey: String, CaseIterable, Identifiable, Equatable {
-    case rightOption  = "Right ⌥"
-    case rightControl = "Right ⌃"
-    case rightCommand = "Right ⌘"
+    // rawValue = сохранённое значение в UserDefaults — НЕ менять у существующих
+    // (Fn / Right ⌥ / Right ⌃ / Right ⌘), иначе у пользователей слетит выбор.
     case fn           = "Fn"
+    case rightCommand = "Right ⌘"
+    case leftCommand  = "Left ⌘"
+    case rightOption  = "Right ⌥"
+    case leftOption   = "Left ⌥"
+    case rightControl = "Right ⌃"
+    case leftControl  = "Left ⌃"
+    case rightShift   = "Right ⇧"
+    case leftShift    = "Left ⇧"
 
     var id: String { rawValue }
 
+    // Виртуальные keycode'ы macOS — РАЗНЫЕ для левой/правой клавиши (этим и
+    // различаем сторону; flag ниже одинаков для пары и сообщает down/up).
     var code: CGKeyCode {
         switch self {
-        case .rightOption:  return 61
-        case .rightControl: return 62
-        case .rightCommand: return 54
         case .fn:           return 63
+        case .rightCommand: return 54
+        case .leftCommand:  return 55
+        case .rightOption:  return 61
+        case .leftOption:   return 58
+        case .rightControl: return 62
+        case .leftControl:  return 59
+        case .rightShift:   return 60
+        case .leftShift:    return 56
         }
     }
 
+    // Маска модификатора (не различает сторону — сторону даёт keycode выше).
     var flag: CGEventFlags {
         switch self {
-        case .rightOption:  return .maskAlternate
-        case .rightControl: return .maskControl
-        case .rightCommand: return .maskCommand
-        case .fn:           return .maskSecondaryFn
+        case .fn:                        return .maskSecondaryFn
+        case .rightCommand, .leftCommand: return .maskCommand
+        case .rightOption,  .leftOption:  return .maskAlternate
+        case .rightControl, .leftControl: return .maskControl
+        case .rightShift,   .leftShift:   return .maskShift
         }
     }
 }
